@@ -233,7 +233,7 @@
     if (dark) root.setAttribute("data-mode", "dark"); else root.removeAttribute("data-mode");
     if (dayWord) dayWord.textContent = dark ? "night" : "day";
     var brand = document.querySelector(".brand");
-    if (brand) brand.setAttribute("aria-label", "Emily Ly" + (dark ? "night" : "day") + ", home");
+    if (brand) brand.setAttribute("aria-label", "Emily Lyday, home");
     if (modeBtn) modeBtn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
     if (save) { try { localStorage.setItem("ely-theme", dark ? "dark" : "light"); } catch (e) {} }
   }
@@ -472,6 +472,22 @@
 })();
 
 
+/* Navbar hides while scrolling down and slides back in on any scroll up. */
+(function () {
+  var bar = document.querySelector(".sidebar");
+  if (!bar) return;
+  var lastY = window.scrollY, ticking = false;
+  function update() {
+    var y = window.scrollY, dy = y - lastY;
+    if (y <= bar.offsetHeight) bar.classList.remove("nav-away");          // always shown near the top
+    else if (dy > 6) bar.classList.add("nav-away");
+    else if (dy < -6) bar.classList.remove("nav-away");
+    if (Math.abs(dy) > 6 || y <= bar.offsetHeight) lastY = y;
+    ticking = false;
+  }
+  window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+})();
+
 /* Subtle ASCII sparkle trail that follows the cursor. */
 (function () {
   if (!window.matchMedia || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -486,8 +502,10 @@
   size(); addEventListener("resize", size);
   var GL = ["ring", "dot", "star", "dot", "ring", "star"], NAVY = "#343d6d", CREAM = "#f4ecdb", ps = [], lx = -1, ly = -1, last = 0, running = false;
   addEventListener("mousemove", function (e) {
-    var hb = document.querySelector(".intro.top");
-    if (hb) { var br = hb.getBoundingClientRect(); if (e.clientY >= br.top && e.clientY <= br.bottom) { lx = -1; return; } }
+    var nb = document.querySelector(".sidebar");                    // no sparkles over the navbar
+    if (nb) { var br = nb.getBoundingClientRect(); if (e.clientY >= br.top && e.clientY <= br.bottom) { lx = -1; return; } }
+    var pc = document.querySelector(".paw-cat");                    // ...or over the header cat
+    if (pc) { var cr = pc.getBoundingClientRect(); if (e.clientX >= cr.left && e.clientX <= cr.right && e.clientY >= cr.top && e.clientY <= cr.bottom) { lx = -1; return; } }
     if (e.target && e.target.closest && e.target.closest("img, video, .shot, .wk-media, .foot-band")) { lx = -1; return; }   // none over images or the footer
     var now = performance.now();
     if (lx >= 0 && Math.hypot(e.clientX - lx, e.clientY - ly) < 9 || now - last < 22) return;
@@ -498,9 +516,7 @@
   }, { passive: true });
   var prev = 0;
   function overNavy(y) {
-    if (document.documentElement.getAttribute("data-mode") === "dark") return true;
-    var b = document.querySelector(".intro.top");
-    return !!b && b.getBoundingClientRect().top <= y && b.getBoundingClientRect().bottom >= y;
+    return document.documentElement.getAttribute("data-mode") === "dark";   // header is cream now, so navy sparkles there in light mode
   }
   function overFoot(y) {
     var f = document.querySelector(".foot-band");
@@ -986,4 +1002,133 @@
   else start();
   document.addEventListener("visibilitychange", function () { if (document.hidden) stop(); else if (cv.getBoundingClientRect().top < innerHeight) start(); });
   frame(performance.now());
+})();
+
+/* Stitched name in the homepage header: "Emily Lyday" in a handwritten script (images/name-script.png,
+   with the E and L enlarged around the lowercase midline), redrawn as cross stitches on a grid
+   (same x-stitch style as the footer bouquet). Stitches scatter from the pointer and spring back. */
+(function () {
+  var wrap = document.querySelector(".stitch-name");
+  var canvas = wrap && wrap.querySelector("canvas");
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext("2d");
+  var TEXT = "Emily Lyday";
+  var FONT = '"Great Vibes", "Pinyon Script", cursive';
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var stitches = [], W = 0, H = 0, cell = 0, dpr = 1, raf = 0, moving = false;
+  var mouse = { x: -9999, y: -9999, on: false };
+
+  function css(name, fb) { var v = getComputedStyle(wrap).getPropertyValue(name).trim(); return v || fb; }
+
+  function build() {
+    var r = canvas.getBoundingClientRect();
+    W = r.width; H = r.height;
+    if (!W || !H) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    cell = Math.max(2, Math.min(4.2, W / 230));
+
+    var off = document.createElement("canvas"), S = 2;
+    off.width = Math.ceil(W * S); off.height = Math.ceil(H * S);
+    var o = off.getContext("2d");
+    var sc = Math.min(W * 0.96 / IMG.width, H * 0.94 / IMG.height);
+    var dw = IMG.width * sc, dh = IMG.height * sc;
+    o.setTransform(S, 0, 0, S, 0, 0);
+    o.drawImage(IMG, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    var data = o.getImageData(0, 0, off.width, off.height).data;
+
+    var COLS = Math.floor(W / cell), ROWS = Math.floor(H / cell);
+    var ox = (W - COLS * cell) / 2, oy = (H - ROWS * cell) / 2;
+    var ink = [];
+    for (var y = 0; y < ROWS; y++) {
+      ink[y] = [];
+      for (var x = 0; x < COLS; x++) {
+        var hit = 0, n = 0;
+        for (var sy = 0.2; sy < 1; sy += 0.3) for (var sx = 0.2; sx < 1; sx += 0.3) {
+          var px = Math.floor((ox + (x + sx) * cell) * S), py = Math.floor((oy + (y + sy) * cell) * S);
+          if (px >= 0 && py >= 0 && px < off.width && py < off.height && data[(py * off.width + px) * 4 + 3] > 110) hit++;
+          n++;
+        }
+        ink[y][x] = hit / n >= 0.22;
+      }
+    }
+
+    function at(x, y) { return y >= 0 && y < ROWS && x >= 0 && x < COLS && ink[y][x]; }
+    stitches = [];
+    for (var yy = 0; yy < ROWS; yy++) for (var xx = 0; xx < COLS; xx++) {
+      if (!ink[yy][xx]) continue;
+      var inner = at(xx - 1, yy) && at(xx + 1, yy) && at(xx, yy - 1) && at(xx, yy + 1) &&
+                  at(xx - 1, yy - 1) && at(xx + 1, yy - 1) && at(xx - 1, yy + 1) && at(xx + 1, yy + 1);
+      var h = (xx * 92821 + yy * 68917) % 1000 / 1000;
+      stitches.push({
+        x: ox + (xx + 0.5) * cell, y: oy + (yy + 0.5) * cell,
+        tilt: (h - 0.5) * 0.22, tone: h < 0.3 ? 1 : 0,
+        ox: 0, oy: 0, vx: 0, vy: 0
+      });
+    }
+  }
+
+  function frame() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    var thread = css("--stitch-thread", "#f4ecdb"), thread2 = css("--stitch-thread-2", "#dcd0b8");
+    var half = cell * 0.36, R = Math.max(60, H * 0.45), R2 = R * R, still = true;
+    ctx.lineCap = "round"; ctx.lineWidth = Math.max(1, cell * 0.22);
+    var paths = [new Path2D(), new Path2D()];
+    for (var i = 0; i < stitches.length; i++) {
+      var s = stitches[i], tx = 0, ty = 0;
+      if (mouse.on && !reduce) {
+        var dx = s.x - mouse.x, dy = s.y - mouse.y, dd = dx * dx + dy * dy;
+        if (dd < R2) { var d = Math.sqrt(dd) + 0.001, f = 1 - d / R; tx = (dx / d) * f * f * cell * 1.6; ty = (dy / d) * f * f * cell * 1.6; }
+      }
+      s.vx += (tx - s.ox) * 0.09; s.vy += (ty - s.oy) * 0.09; s.vx *= 0.78; s.vy *= 0.78; s.ox += s.vx; s.oy += s.vy;
+      if (Math.abs(s.vx) > 0.02 || Math.abs(s.vy) > 0.02 || Math.abs(s.ox - tx) > 0.05 || Math.abs(s.oy - ty) > 0.05) still = false;
+      var x = s.x + s.ox, y = s.y + s.oy, c = Math.cos(s.tilt), sn = Math.sin(s.tilt);
+      var ax = half * (c - sn), ay = half * (sn + c), bx = half * (c + sn), by = half * (sn - c);
+      var p = paths[s.tone];
+      p.moveTo(x - ax, y - ay); p.lineTo(x + ax, y + ay);
+      p.moveTo(x - bx, y - by); p.lineTo(x + bx, y + by);
+    }
+    ctx.strokeStyle = thread; ctx.globalAlpha = 0.96; ctx.stroke(paths[0]);
+    ctx.strokeStyle = thread2; ctx.globalAlpha = 0.9; ctx.stroke(paths[1]);
+    ctx.globalAlpha = 1;
+    if (!still || mouse.on) { raf = requestAnimationFrame(frame); moving = true; } else { moving = false; }
+  }
+
+  function kick() { if (!moving && !reduce) { moving = true; raf = requestAnimationFrame(frame); } }
+  canvas.addEventListener("pointermove", function (e) {
+    var r = canvas.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; mouse.on = true; kick();
+  }, { passive: true });
+  canvas.addEventListener("pointerleave", function () { mouse.on = false; kick(); });
+
+  var rz;
+  window.addEventListener("resize", function () { clearTimeout(rz); rz = setTimeout(function () { build(); frame(); }, 120); });
+
+  function go() { build(); frame(); }
+  var IMG = new Image();
+  IMG.onload = go;
+  IMG.src = wrap.getAttribute("data-src") || "images/name-script.png";
+})();
+
+/* Header cat: sleepy eyes that peek open now and then (and while hovered), an ear twitch,
+   a swishing tail, and a heart that floats up when hovered or tapped */
+(function () {
+  var cat = document.querySelector(".kitty");
+  if (!cat) return;
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) return;
+  var eyes = cat.querySelectorAll(".k-eye");
+  function setEyes(t) { for (var i = 0; i < eyes.length; i++) eyes[i].textContent = t; }
+  var hovering = false;
+  (function peek() {
+    setTimeout(function () { if (!hovering) { setEyes("•"); setTimeout(function () { if (!hovering) setEyes("_"); }, 900); } peek(); }, 4000 + Math.random() * 5000);
+  })();
+  cat.addEventListener("mouseenter", function () { hovering = true; setEyes("•"); });
+  cat.addEventListener("mouseleave", function () { hovering = false; setEyes("_"); });
+  (function twitch() {
+    setTimeout(function () { cat.classList.add("twitch"); setTimeout(function () { cat.classList.remove("twitch"); }, 450); twitch(); }, 4500 + Math.random() * 5000);
+  })();
+  function love() { cat.classList.remove("love"); void cat.offsetWidth; cat.classList.add("love"); }
+  cat.addEventListener("mouseenter", love);
+  cat.addEventListener("click", love);
 })();
