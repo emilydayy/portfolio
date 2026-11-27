@@ -97,8 +97,10 @@
     wrap.className = "lb-wrap";
     wrap.appendChild(big);
     if (captionText) {
-      var cap = document.createElement("p");
-      cap.className = "lb-cap"; cap.textContent = captionText;
+      var cap = document.createElement("div");
+      cap.className = "lb-cap";
+      if (typeof captionText === "string") cap.textContent = captionText;
+      else cap.appendChild(captionText);
       wrap.classList.add("has-cap");
       wrap.appendChild(cap);
       cap.addEventListener("click", function (e) { e.stopPropagation(); });
@@ -119,10 +121,22 @@
     if (e.key === "Escape" && box.classList.contains("on")) closeBox();
   });
 
-  /* the caption that goes with an image: its own figcaption, or its note in the research collage */
+  /* the caption that goes with an image or video: its own figcaption, the note that
+     follows its figure (or its figure pair), or its note in the research collage.
+     Returns a fragment so the caption keeps its heading styling. */
+  function cloneKids(el) {
+    var frag = document.createDocumentFragment();
+    el.childNodes.forEach(function (n) { frag.appendChild(n.cloneNode(true)); });
+    return frag;
+  }
   function captionFor(slot) {
     var fig = slot.closest("figure"), cap = fig && fig.querySelector("figcaption");
-    if (cap) return cap.textContent.trim();
+    if (cap) return cloneKids(cap);
+    if (fig) {
+      var host = fig.parentElement && /\bfig-(pair|row)\b/.test(fig.parentElement.className) ? fig.parentElement : fig;
+      var next = host.nextElementSibling;
+      if (next && next.classList.contains("fig-note")) return cloneKids(next);
+    }
     if (slot.closest(".collage-r")) {
       var alt = slot.getAttribute("data-alt"), found = "";
       slot.closest(".collage-r").querySelectorAll(".c-notes p").forEach(function (p) {
@@ -167,7 +181,7 @@
       boxBack = { video: vid, wasPlaying: !vid.paused };
       vid.pause();
       if (vid.videoWidth) big.style.aspectRatio = vid.videoWidth + " / " + vid.videoHeight;
-      showBox(big, vid);
+      showBox(big, vid, captionFor(vid));
       big.addEventListener("loadedmetadata", function () {
         try { big.currentTime = vid.currentTime; } catch (e) {}
         big.play().catch(function () {});
